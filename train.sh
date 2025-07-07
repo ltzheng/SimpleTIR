@@ -165,6 +165,7 @@ LOG_FILE_PATH=$LOG_PATH/$RUN_NAME.log
 while [[ "$#" -gt 0 ]]; do
   echo "Processing: $1"
   case "$1" in
+    --config_name) CONFIG_NAME="$2"; shift 2 ;;
     --train_batch_size) TRAIN_BATCH_SIZE="$2"; shift 2 ;;
     --val_sample_size) VAL_SAMPLE_SIZE="$2"; shift 2 ;;
     --max_prompt_length) MAX_PROMPT_LENGTH="$2"; shift 2 ;;
@@ -339,9 +340,12 @@ VALID_FILES=$(format_dataset_paths "${VALID_DATASET[@]}")
 echo "TRAIN_FILES: $TRAIN_FILES"
 echo "VALID_FILES: $VALID_FILES"
 
+echo "CONFIG_NAME: $CONFIG_NAME"
+
 # Example of using the variables
 sleep 3
 PYTHONUNBUFFERED=1 python -m recipe.simpletir.main_simpletir \
+    --config-name $CONFIG_NAME \
     algorithm.adv_estimator=grpo \
     data.train_files=$TRAIN_FILES \
     data.val_files=$VALID_FILES \

@@ -56,6 +56,7 @@ CHECKPOINT_PATH=... \ # the dir to save the checkpoint
 LOG_PATH=... \ # the dir to save the log
 NNODES=... \
 RESUME=False \
+CONFIG_NAME=simpletir_trainer \
 bash train.sh \
   --max_response_length 8000 \
   --max_prompt_length 16000 \
@@ -70,9 +71,33 @@ bash train.sh \
   --oversample 3
 ```
 
+```bash
+MODEL_PATH=... \ # the parent dir of the checkpoint
+DATA_PATH=... \ # the dir containing data like deepscaler/train (see datasets/)
+CHECKPOINT_PATH=... \ # the dir to save the checkpoint
+LOG_PATH=... \ # the dir to save the log
+NNODES=... \
+RESUME=False \
+CONFIG_NAME=simpletir_code \
+bash train.sh \
+  --max_response_length 8000 \
+  --max_prompt_length 16000 \
+  --rollout_tp 2 \
+  --save_freq 10 \
+  --model_name Qwen2.5-7B \
+  --max_turns 5 \
+  --train_dataset "code-r1-12k-leetcode2k-taco/train" \
+  --valid_dataset "code-r1-12k-leetcode2k-taco/test" \
+  --acc_filter 0.1_0.9 \
+  --remove_clip True \
+  --mask_void_turns True \
+  --oversample 3 \
+  --apply_chat_template False
+```
+
 ### Inference
 
-Example command to run 7B evaluation on an 8xH100 node:
+Example command to run 7B math evaluation on an 8xH100 node:
 
 ```bash
 MODEL_PATH=... \ # the parent dir of the checkpoint
@@ -93,6 +118,29 @@ bash train.sh \
   --output_acc_to_file True \
   --val_sample_size 500 \
   --sp_size 2
+```
+
+Example command to run 7B code evaluation on an 8xH100 node:
+
+```bash
+MODEL_PATH=... \ # the parent dir of the checkpoint
+DATA_PATH=... \ # the dir containing data like deepscaler/aime (see datasets/)
+CHECKPOINT_PATH=... \ # the dir to save the checkpoint
+LOG_PATH=... \ # the dir to save the log
+NNODES=... \
+CONFIG_NAME=simpletir_code \
+RESUME=False \
+  bash train.sh \
+    --max_response_length 2000 \
+    --max_prompt_length 4000 \
+    --rollout_tp 2 \
+    --model_name Qwen2.5-7B \
+    --max_turns 10 \
+    --valid_dataset "code-r1-12k-leetcode2k-taco/test" \
+    --val_only True \
+    --n_val 2 \
+    --val_sample_size 50 \
+    --sp_size 2
 ```
 
 ## Roadmap

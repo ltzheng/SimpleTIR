@@ -19,9 +19,14 @@ def _default_compute_score(data_source, solution_str, ground_truth, extra_info=N
     Returns:
         Union[float, Dict[str, Any]]: Either a float score or a dictionary with 'score' and optional 'extra_info'
     """
-    from . import hf_math_verify
-
-    res = hf_math_verify.compute_score(solution_str, ground_truth)
+    if "simplelr_math_35" in data_source or "deepscaler" in data_source:
+        from . import hf_math_verify
+        res = hf_math_verify.compute_score(solution_str, ground_truth)
+    elif "code" in data_source:
+        from. import code
+        res = code.compute_score(solution_str, ground_truth, extra_info=extra_info)
+    else:
+        raise ValueError(f"Unknown data source: {data_source}")
 
     if isinstance(res, (int, float, bool)):
         return float(res)

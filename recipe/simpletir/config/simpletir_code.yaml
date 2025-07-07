@@ -1,0 +1,50 @@
+hydra:
+  searchpath:
+    - file://verl/trainer/config
+
+defaults:
+  - ppo_trainer
+  - _self_
+
+data:
+  val_sample_size: null
+  apply_chat_template: False
+  filter_overlong_prompts: False
+  max_start_length: 4096
+  max_obs_length: 4096
+  prompt: ""
+
+actor_rollout_ref:
+  actor:
+    clip_ratio_high: 0.2
+    clip_ratio_low: 0.2
+    mask_tool_output: True
+    mask_void_turns: True
+  rollout:
+    min_p: 0
+    swap_space: 40
+    model_path: ${actor_rollout_ref.model.path}
+    disable_log_stats: False
+    n: 8 # > 1 for grpo
+    min_n: 4 # at least 4 responses should be valid for each prompt, otherwise we will skip it. Invalid ones include those which are over long.
+    val_kwargs:
+      # sampling parameters for validation
+      top_k: -1 # 0 for hf rollout, -1 for vllm rollout
+      top_p: 0.7
+      temperature: 1.0
+      n: 1
+      do_sample: True # default eager for validation
+      k: ${actor_rollout_ref.rollout.val_kwargs.n} # pass@k, 1 <= k_val <= actor_rollout_ref.rollout.n_val, default actor_rollout_ref.rollout.n_val
+
+trainer:
+  rejection_sample: True
+  oversample_multiplier: 2.0 # Multiple the training batch size by this factor to account for rejection sampling reduction.
+  remove_clip: False # remove overlong response if True
+  acc_filter: False # if True, only keep prompts with avg acc ratio in thresholds
+  acc_filter_high: 1
+  acc_filter_low: 0
+  start_clip_step: 50
+
+agent:
+  tool_use: True
+  max_turns: 5
