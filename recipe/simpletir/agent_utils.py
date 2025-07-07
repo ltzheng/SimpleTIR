@@ -448,7 +448,6 @@ class AgentHelper:
                 [not v for v in is_void_turn], dtype=torch.bool
             )
             active_num_list.append(active_mask.sum().item())
-            turns_stats[curr_active_mask] += 1
             use_code_stats += torch.tensor(code_info["use_code"], dtype=torch.int)
             valid_code_stats += torch.tensor(code_info["valid_code"], dtype=torch.int)
             success_code_lines.extend(code_info["success_code_lines"])
@@ -462,6 +461,7 @@ class AgentHelper:
                         next_obs[i] += self.prompt_dict["final_prompt"]
 
             if step < self.config.max_turns - 1:
+                turns_stats[curr_active_mask] += 1
                 next_obs_ids = self._process_next_obs(next_obs)
                 rollings = self._update_rolling_state(rollings, responses_ids, next_obs_ids)
                 original_right_side = self._update_right_side(
