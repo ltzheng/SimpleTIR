@@ -626,22 +626,31 @@ def final_answer(result):
                 total_lines, code_lines = count_lines(tasks[j])
 
                 obs = ""
-                if len(stdout) > 0:
-                    truncated_stdout = truncate_content(stdout, max_length=512)
-                    obs = f"\nCode execution result: {truncated_stdout}\n"
                 if len(stderr) > 0:
                     valid_code[env_idx] = 0
                     fail_code_lines.append(total_lines)
                     fail_code_strip_lines.append(code_lines)
+
                     stderr_lines = stderr.splitlines()
                     truncated_stderr = truncate_content(
                         "\n".join(stderr_lines[-self.error_n_line :]), max_length=512
                     )
                     obs = f"\nCode execution result: {truncated_stderr}\n"
-                else:
+                elif len(stdout) > 0:
                     valid_code[env_idx] = 1
                     success_code_lines.append(total_lines)
                     success_code_strip_lines.append(code_lines)
+                    
+                    truncated_stdout = truncate_content(stdout, max_length=512)
+                    obs = f"\nCode execution result: {truncated_stdout}\n"
+                else:
+                    # no stdout nor stderr
+                    # this can happen upon sandbox error or the code block itself
+                    # did not print anything
+                    if not success:
+                        obs = "\nCode execution result: interpreter timeout\n"
+                    else:
+                        obs = "\nCode execution result: \n"
                 next_obs[env_idx] = obs
                 if "\\boxed{" in stdout:
                     dones[env_idx] = 1
