@@ -94,3 +94,15 @@ agent:
   tool_use: True
   max_turns: 5
   append_final_answer_func: True
+  adaptive_turns:
+    enable_adaptive_turns: False  # Set to True to enable adaptive turn budget
+    min_turns: 1
+    max_turns: 50
+    confidence_threshold: 0.85
+    base_turns: 5
+    prompt_length_weight: 0.3
+    complexity_weight: 0.4
+    progress_weight: 0.3
+    enable_early_stopping: True
+    early_stop_window: 2
+    early_stop_improvement_threshold: 0.01
