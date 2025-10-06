@@ -31,6 +31,7 @@ from torchdata.stateful_dataloader import StatefulDataLoader
 from tqdm import tqdm
 
 from recipe.simpletir.agent_utils import AgentHelper, GenerationConfig
+from recipe.simpletir.turn_predictor import TurnPredictorConfig
 from recipe.simpletir.utils.dataset.rl_dataset import RLCustomPromptDataset
 from verl import DataProto
 from verl.protocol import DataProtoItem, pad_dataproto_to_divisor, unpad_dataproto
@@ -794,6 +795,10 @@ class RaySimpleTIRTrainer(RayPPOTrainer):
 
         if self.config.agent.tool_use:
             # Agent config preparation
+            turn_predictor_config = None
+            if hasattr(self.config.agent, 'adaptive_turns'):
+                turn_predictor_config = TurnPredictorConfig(**self.config.agent.adaptive_turns)
+
             gen_config = GenerationConfig(
                 max_turns=self.config.agent.max_turns,
                 max_start_length=self.config.data.max_start_length,
@@ -805,6 +810,7 @@ class RaySimpleTIRTrainer(RayPPOTrainer):
                 rollout_n=1,
                 mask_void_turns=False,  # no void turn masking during validation
                 append_final_answer_func=self.config.agent.append_final_answer_func,
+                turn_predictor_config=turn_predictor_config,
             )
             generation_manager = AgentHelper(
                 tokenizer=self.tokenizer,
@@ -1013,6 +1019,10 @@ class RaySimpleTIRTrainer(RayPPOTrainer):
         last_val_metrics = None
         if self.config.agent.tool_use:
             # Agent config preparation
+            turn_predictor_config = None
+            if hasattr(self.config.agent, 'adaptive_turns'):
+                turn_predictor_config = TurnPredictorConfig(**self.config.agent.adaptive_turns)
+
             gen_config = GenerationConfig(
                 max_turns=self.config.agent.max_turns,
                 max_start_length=self.config.data.max_start_length,
@@ -1024,6 +1034,7 @@ class RaySimpleTIRTrainer(RayPPOTrainer):
                 rollout_n=self.config.actor_rollout_ref.rollout.n,
                 mask_void_turns=self.config.actor_rollout_ref.actor.mask_void_turns,
                 append_final_answer_func=self.config.agent.append_final_answer_func,
+                turn_predictor_config=turn_predictor_config,
             )
             generation_manager = AgentHelper(
                 tokenizer=self.tokenizer,

@@ -7,6 +7,7 @@ from typing import Dict, List, Tuple
 import torch
 
 from verl import DataProto
+from recipe.simpletir.turn_predictor import AdaptiveTurnPredictor, TurnPredictorConfig
 
 if os.getenv("SANDBOX_ENDPOINT", None) is not None:
     from sandbox.local_sandbox import parallel_sandbox
@@ -132,6 +133,7 @@ class GenerationConfig:
     rollout_n: int
     mask_void_turns: bool
     append_final_answer_func: bool
+    turn_predictor_config: TurnPredictorConfig = None
 
 
 class AgentHelper:
@@ -159,6 +161,12 @@ class AgentHelper:
             "final_prompt": "\n",
         }
         self.error_n_line = 1
+
+        # Initialize adaptive turn predictor if configured
+        if config.turn_predictor_config is not None:
+            self.turn_predictor = AdaptiveTurnPredictor(config.turn_predictor_config)
+        else:
+            self.turn_predictor = None
 
     def _batch_tokenize(self, responses: List[str]) -> torch.Tensor:
         """Tokenize a batch of responses."""
@@ -356,10 +364,34 @@ class AgentHelper:
         initial_input_ids: torch.Tensor,
         timeout: int = 5,
     ) -> Tuple[Dict, Dict]:
-        """Run main LLM generation loop."""
+        """Run main LLM generation loop with adaptive turn budget and early stopping."""
         batch_size = gen_batch.batch["input_ids"].shape[0]
 
         self.timeout = timeout
+
+        # Predict optimal turn budget per problem if adaptive turns enabled
+        if self.turn_predictor is not None:
+            prompt_lengths = gen_batch.batch["attention_mask"].sum(dim=1).tolist()
+            per_sample_max_turns = [
+                self.turn_predictor.predict_turn_budget(
+                    prompt_length=length,
+                    prompt_ids=gen_batch.batch["input_ids"][i],
+                    extra_features=None
+                )
+                for i, length in enumerate(prompt_lengths)
+            ]
+            # Replicate for rollout_n
+            per_sample_max_turns = [
+                turn for turn in per_sample_max_turns for _ in range(self.config.rollout_n)
+            ]
+            max_turns_tensor = torch.tensor(per_sample_max_turns, dtype=torch.int)
+        else:
+            per_sample_max_turns = [self.config.max_turns] * (batch_size * self.config.rollout_n)
+            max_turns_tensor = torch.full(
+                (batch_size * self.config.rollout_n,),
+                self.config.max_turns,
+                dtype=torch.int
+            )
 
         original_left_side = {
             "input_ids": initial_input_ids[:, -self.config.max_start_length :]
@@ -372,7 +404,7 @@ class AgentHelper:
         active_mask = torch.ones(batch_size * self.config.rollout_n, dtype=torch.bool)
         void_turn_mask = torch.ones(
             batch_size * self.config.rollout_n, dtype=torch.bool
-        )  # if void turn, set to False
+        )
         turns_stats = torch.ones(batch_size * self.config.rollout_n, dtype=torch.int)
         use_code_stats = torch.zeros(
             batch_size * self.config.rollout_n, dtype=torch.int
@@ -385,6 +417,9 @@ class AgentHelper:
         success_code_strip_lines = []
         fail_code_strip_lines = []
         active_num_list = [active_mask.sum().item()]
+        confidence_scores = torch.zeros(batch_size * self.config.rollout_n, dtype=torch.float32)
+        early_stopped = torch.zeros(batch_size * self.config.rollout_n, dtype=torch.bool)
+        execution_history = [[] for _ in range(batch_size * self.config.rollout_n)]
         rollings = gen_batch
 
         # Main generation loop
@@ -436,6 +471,38 @@ class AgentHelper:
                 responses_str, active_mask
             )
 
+            # Update execution history for early stopping
+            for i in range(len(execution_history)):
+                if active_mask[i]:
+                    has_code = code_info["use_code"][i] == 1
+                    execution_success = code_info["valid_code"][i] == 1
+                    has_final_answer = "\\boxed{" in responses_str[i]
+                    execution_history[i].append({
+                        'has_valid_code': has_code,
+                        'execution_success': execution_success,
+                        'has_final_answer': has_final_answer,
+                        'output': next_obs[i] if i < len(next_obs) else ''
+                    })
+
+            # Check for early stopping per sample
+            if self.turn_predictor is not None:
+                for i in range(len(active_mask)):
+                    if active_mask[i] and not early_stopped[i] and step > 0:
+                        should_stop, confidence = self.turn_predictor.should_early_stop(
+                            current_turn=step + 1,
+                            code_execution_results=execution_history[i],
+                            response_confidence=None
+                        )
+                        if should_stop:
+                            dones[i] = 1
+                            early_stopped[i] = True
+                            confidence_scores[i] = confidence
+
+            # Check per-sample turn budget
+            for i in range(len(active_mask)):
+                if active_mask[i] and step + 1 >= max_turns_tensor[i]:
+                    dones[i] = 1
+
             curr_active_mask = torch.tensor(
                 [not done for done in dones], dtype=torch.bool
             )
@@ -473,6 +540,13 @@ class AgentHelper:
         meta_info["fail_code_lines"] = fail_code_lines
         meta_info["success_code_strip_lines"] = success_code_strip_lines
         meta_info["fail_code_strip_lines"] = fail_code_strip_lines
+
+        # Add adaptive turn budget statistics
+        if self.turn_predictor is not None:
+            meta_info["predicted_max_turns"] = max_turns_tensor.tolist()
+            meta_info["early_stopped"] = early_stopped.tolist()
+            meta_info["confidence_scores"] = confidence_scores.tolist()
+            meta_info["turn_predictor_stats"] = self.turn_predictor.get_statistics()
 
         print("ACTIVE_TRAJ_NUM:", active_num_list)
 
